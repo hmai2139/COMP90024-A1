@@ -1,44 +1,46 @@
-Number of available workers: 4.
-Starting paralellised version of the application...
-# ----------------------------------------------------------------
-Number of available workers: 4.
-Starting paralellised version of the application...
-# ----------------------------------------------------------------
-Number of available workers: 4.
-Starting paralellised version of the application...
-# ----------------------------------------------------------------
-Number of available workers: 4.
-Starting paralellised version of the application...
-# ----------------------------------------------------------------
-rank 0 offset: 0
-rank 1 offset: 5980045
-rank 2 offset: 11960090
-rank 3 offset: 17940135
+Language code json loaded successfully. Continue...
+
+Number of workers: 4.
+
+#-------------------------------------------------------------
+
 Top 10 hashtags.
-# ----------------------------------------------------------------
-1. #scottyfrommarketing, 31.
-1. #auspol, 31.
-3. #climatechange, 30.
-4. #australiaburns, 24.
-5. #australianfires, 22.
-6. #sydnye, 19.
-7. #sonicmovie, 17.
-8. #2020, 13.
-9. #nswfires, 12.
-9. #bushfirecrisis, 12.
-# ----------------------------------------------------------------
+
+1. #climatechange, 7.
+2. #scottyfrommarketing, 6.
+2. #auspol, 6.
+4. #australiaburns, 5.
+5. #sonicmovie, 4.
+6. #bushfiresnsw, 3.
+6. #nswfires, 3.
+8. #sydnye, 2.
+8. #sydney, 2.
+8. #2020, 2.
+8. #climate, 2.
+8. #happynewyear, 2.
+8. #australianfires, 2.
+8. #nye2020, 2.
+8. #fireworks, 2.
+8. #canberra, 2.
+8. #liarfromtheshire, 2.
+8. #morrisonfires, 2.
+8. #countdown2020withpeck, 2.
+8. #nye, 2.
+8. #1, 2.
+8. #nswf, 2.
+8. #a, 2.
+
+#-------------------------------------------------------------
 
 Top 10 languages.
-# ----------------------------------------------------------------
-1. en, 4127.
-2. und, 302.
-3. pt, 101.
-4. fr, 92.
-5. th, 83.
-6. es, 61.
-7. ja, 32.
-8. tl, 27.
-9. in, 22.
-9. ko, 22.
-# ----------------------------------------------------------------
 
+1. English (en), 832.
+2. Undefined (und), 69.
+3. French (fr), 18.
+4. Portuguese (pt), 17.
+5. Spanish (es), 16.
+6. Thai (th), 9.
+7. Tagalog (tl), 6.
+8. Arabic (ar), 4.
+8. Chinese (zh), 4.
+8. German (de), 4.

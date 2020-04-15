@@ -1,0 +1,3 @@
+sbatch assignment1_1node_1core.slurm
+sbatch assignment1_1node_8cores.slurm
+sbatch assignment1_2nodes_4cores_each.slurm

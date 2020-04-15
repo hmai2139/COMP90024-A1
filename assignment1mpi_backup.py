@@ -161,132 +161,155 @@ else:
     sys.exit()
 
 # -----------------------------------------------------------------------------
-# Read the file and get its size in byte.
-read_file = MPI.File.Open(comm, file_name, read)
-file_size = MPI.File.Get_size(read_file)
-      
-# Add some extra memory to buffer to avoid breaking the json structure.
-# i.e some data in the end of one chunk and some data at the start of 
-# the next chunk will overlap.
-# Choose 20KB to be on the safe side.
-overlap_size = 20480
 
-# Buffer size for each worker.
-buffer_size = int(math.ceil(file_size/size))
-    
-# Each worker will start reading at their respective offset.
-worker_offset = buffer_size * rank
-
-# Have each worker read one chunk of their assigned part at a time to 
-# prevent integer overflow. Adjust value as needed.
+# Size < 2 i.e single worker, read and process file serially.
 if size < 2:
-    chunk_num = 128
-else:
-    chunk_num = 32
-
-# Size of each chunk in bytes.
-chunk_size = int(math.ceil(buffer_size/chunk_num))
-
-for i in range(chunk_num):
-        
-    chunk_offset = worker_offset + chunk_size * i
-
-    # Read each chunk and overlapping data.
-    chunk_buffer = bytearray(chunk_size + overlap_size)
-    read_file.Read_at_all(chunk_offset, chunk_buffer)
-
-    # Overlapping data only.
-    overlap_buffer = bytearray(overlap_size)
-    read_file.Read_at_all(chunk_offset + chunk_size, overlap_buffer)
     
-    # Convert data in buffers to string.
-    chunk_string = chunk_buffer.decode('utf-8', 'ignore').strip('\x00')
-    overlap_string = overlap_buffer.decode('utf-8', 'ignore').strip('\x00')
-
-    # Free memory.
-    chunk_buffer = overlap_buffer = None
-
-    # Find the index position where the overlapped data starts in the whole
-    # data.
-    overlap_index = chunk_string.rfind(overlap_string)
-
-    # Adjusting chunk to process accounting for the overlapped data.
-    # Each chunk  will begin after the first new line character
-    # from the start...
-    chunk_start = chunk_string.index('\n') + 1
-
-    # ... and each chunk except for the last one of the last worker
-    # will stop at the first new line character in the overlap region,
-    # thus we will avoid having to process a tweet broken by splitting data.
-    if rank == size - 1 and i == chunk_num - 1:
-        chunk_string = chunk_string[chunk_start: ]
-
-        # Fix the json chunk if necessary.
+    with open(file_name, 'r') as input_file:
+        parser = ijson.parse(input_file)
         try:
-            json.load(chunk_string)
-        except:
-            chunk_string = '{"rows":[\n' + chunk_string[:-3] + ']}'
+            for prefix, event, value in parser:
 
-    else:
-        chunk_end = overlap_index + overlap_string.index('\n')
-        chunk_string = chunk_string[chunk_start: chunk_end]
-
-        # Fix the json chunk if necessary.
-        try:
-            json.load(chunk_string)
-        except:
-            chunk_string = '{"rows":[\n' + chunk_string[:-2] + ']}'
-
-    # Parse json data.
-    parser = ijson.parse(io.StringIO(chunk_string))
-    try:
-        for prefix, event, value in parser:
-
-            # Extract hashtags from tweet's text.
-            if prefix == 'rows.item.doc.text':
-                hashtags = hashtags_from_text(value)
-                            
-                # Increment extracted hashtags'.
-                for hashtag in hashtags:
-                    hashtag_dict[hashtag] += 1
-                        
-            # Increment language's count.
-            elif prefix == 'rows.item.doc.metadata.iso_language_code':
-                lang_dict[value] += 1
-    
-    # Skip any trailing bytes at the end resulted from the splitting process.
-    except:
-        pass
-
-# Close the file after reading.
-read_file.Close()
-
-comm.Barrier()
-
-# Gather the dictionaries from all worker.
-all_hashtag_dicts = comm.gather(hashtag_dict, root = 0)
-all_lang_dicts = comm.gather(lang_dict, root = 0)
-
-comm.Barrier()
-
-# At master, combine all dictionaries of each type into one.
-if rank == 0:
+                # Extract hashtags from tweet's text.
+                if prefix == 'rows.item.doc.text':
+                    hashtags = hashtags_from_text(value)
+                    
+                    # Increment extracted hashtags'.
+                    for hashtag in hashtags:
+                        hashtag_dict[hashtag] += 1
+                
+                # Increment language's count.
+                elif prefix == 'rows.item.doc.metadata.iso_language_code':
+                    lang_dict[value] += 1
         
-    # Combine hashtag dictionaries.
-    combined_hashtag_dict = combine_dict(all_hashtag_dicts, int)
+        # If a json object contains error e.g wrong format, ignore it.
+        except:
+            pass
 
-    # Combine language dictionaries.
-    combined_lang_dict = combine_dict(all_lang_dicts, int)
-        
-    # The lowest rank to be displayed on scoreboard.
     N = 10
-
     # Print the top `N` hashtags w/ counts.
     title = 'Top {0} hashtags.'.format(N)
-    scoreboard(combined_hashtag_dict, N, title, True)
+    scoreboard(hashtag_dict, N, title, True)
 
     #Print the top  `N` languages w/ counts.
     title = 'Top {0} languages.'.format(N)
-    scoreboard(combined_lang_dict, N, title, True, LANG_CODES)
+    scoreboard(lang_dict, N, title, True, LANG_CODES)
+
+
+# -----------------------------------------------------------------------------
+
+# Multiple workers, start the paralellised version.
+else:
+
+    # Read the file and get its size in byte.
+    read_file = MPI.File.Open(comm, file_name, read)
+    file_size = MPI.File.Get_size(read_file)
+      
+    # Add some extra memory to buffer to avoid breaking the json structure.
+    # i.e some data in the end of one chunk and some data at the start of 
+    # the next chunk will overlap.
+    # Choose 20KB to be on the safe side.
+    overlap_size = 20480
+    
+    # Create overlap buffer to hold overlap data.
+    overlap_buffer = bytearray(overlap_size)
+
+    # Buffer size for each worker.
+    buffer_size = int(math.ceil(file_size/size))
+    
+    # Each worker will start reading at their respective offset.
+    worker_offset = buffer_size * rank
+
+    # Have each worker read one chunk of their assigned part at a time to 
+    # prevent integer overflow. Adjust value as needed.
+    chunk_num = 32
+    chunk_size = int(math.ceil(buffer_size/chunk_num))
+    for i in range(chunk_num):
+        
+        chunk_offset = worker_offset + chunk_size * i
+
+        # Read each chunk and overlapping data.
+        chunk_buffer = bytearray(chunk_size + overlap_size)
+        read_file.Read_at_all(chunk_offset, chunk_buffer)
+
+        # Overlapping data only.
+        overlap_buffer = bytearray(overlap_size)
+        read_file.Read_at_all(chunk_offset + chunk_size, overlap_buffer)
+    
+        # Convert data in buffers to string.
+        chunk_string = chunk_buffer.decode('utf-8', 'ignore').strip('\x00')
+        overlap_string = overlap_buffer.decode('utf-8', 'ignore').strip('\x00')
+
+        # Find the index position where the overlapped data starts in the whole
+        # data.
+        overlap_index = chunk_string.find(overlap_string)
+
+        # Adjusting chunk to process accounting for the overlapped data.
+        # Each chunk  will begin after the first new line character
+        # from the start...
+        chunk_start = chunk_string.index('\n') + 1
+
+        # ... and each chunk except for the last one of the last worker
+        # will stop at the first new line character in the overlap region,
+        # thus we will avoid having to process a tweet broken by splitting data.
+        if rank == size - 1 and i == chunk_num - 1:
+            chunk_string = chunk_string[chunk_start: ]
+            chunk_string = '{"rows":[\n' + chunk_string[:-3] + ']}'
+        else:
+            chunk_end = overlap_index + overlap_string.index('\n')
+            chunk_string = chunk_string[chunk_start: chunk_end]
+            chunk_string = '{"rows":[\n' + chunk_string[:-2] + ']}'
+
+        # Parse json data.
+        parser = ijson.parse(io.StringIO(chunk_string))
+        try:
+            for prefix, event, value in parser:
+
+                # Extract hashtags from tweet's text.
+                if prefix == 'rows.item.doc.text':
+                    hashtags = hashtags_from_text(value)
+                        
+                    # Increment extracted hashtags'.
+                    for hashtag in hashtags:
+                        hashtag_dict[hashtag] += 1
+                    
+                # Increment language's count.
+                elif prefix == 'rows.item.doc.metadata.iso_language_code':
+                    lang_dict[value] += 1
+        
+        # If a json object contains error e.g wrong format, ignore it.
+        except:
+            pass
+
+    # Close the file after reading.
+    read_file.Close()
+
+    comm.Barrier()
+
+    # Gather the dictionaries from all worker.
+    all_hashtag_dicts = comm.gather(hashtag_dict, root = 0)
+    all_lang_dicts = comm.gather(lang_dict, root = 0)
+
+    comm.Barrier()
+
+    # At master, combine all dictionaries of each type into one.
+    if rank == 0:
+        
+        # Combine hashtag dictionaries.
+        combined_hashtag_dict = combine_dict(all_hashtag_dicts, int)
+
+        # Combine language dictionaries.
+        combined_lang_dict = combine_dict(all_lang_dicts, int)
+        
+        # The lowest rank to be displayed on scoreboard.
+        N = 10
+
+        # Print the top `N` hashtags w/ counts.
+        title = 'Top {0} hashtags.'.format(N)
+        scoreboard(combined_hashtag_dict, N, title, True)
+
+        #Print the top  `N` languages w/ counts.
+        title = 'Top {0} languages.'.format(N)
+        scoreboard(combined_lang_dict, N, title, True, LANG_CODES)
 
 # -----------------------------------------------------------------------------
